@@ -9,7 +9,7 @@ import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 
 class GRUNetwork(nn.Module):
-    def __init__(self, input_size=3, hidden_sizes=[512, 256, 128], output_size=1, dropout=0.3):
+    def __init__(self, input_size=2, hidden_sizes=[512, 256, 128], output_size=1, dropout=0.3):
         super().__init__()
         
         self.gru1 = nn.GRU(input_size, hidden_sizes[0], batch_first=True)
@@ -49,22 +49,34 @@ class GRUModel:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
         
-    def prepare_sequences(self, returns, volatility, garch_vol):
-        sequences = []
-        targets = []
+    def prepare_sequences(self, returns, garch_forecasts, targets):
+        """Prepare sequences using GARCH forecasts as input (not historical volatility)
         
-        for i in range(self.sequence_length, len(returns)):
+        Key change: Input is returns + GARCH forecasts, target is realized volatility
+        """
+        sequences = []
+        sequence_targets = []
+        
+        # Ensure all inputs have the same length
+        min_len = min(len(returns), len(garch_forecasts), len(targets))
+        
+        for i in range(self.sequence_length, min_len):
             seq = np.column_stack([
                 returns[i-self.sequence_length:i],
-                volatility[i-self.sequence_length:i],
-                garch_vol[i-self.sequence_length:i]
+                garch_forecasts[i-self.sequence_length:i]  # Use GARCH forecasts, not historical volatility
             ])
             sequences.append(seq)
-            targets.append(volatility[i])
+            sequence_targets.append(targets[i])
             
-        return np.array(sequences), np.array(targets)
+        return np.array(sequences), np.array(sequence_targets)
     
-    def train(self, train_sequences, train_targets, val_sequences, val_targets, epochs=50, batch_size=100):
+    def train(self, train_sequences, train_targets, val_sequences, val_targets, epochs=50, batch_size=32, max_train_size=500):
+        # Limit training data to 500 data points as specified in paper
+        if len(train_sequences) > max_train_size:
+            indices = np.random.choice(len(train_sequences), max_train_size, replace=False)
+            train_sequences = train_sequences[indices]
+            train_targets = train_targets[indices]
+        
         train_data = TensorDataset(
             torch.FloatTensor(train_sequences),
             torch.FloatTensor(train_targets)
@@ -78,6 +90,12 @@ class GRUModel:
         val_loader = DataLoader(val_data, batch_size=batch_size)
         
         best_val_loss = float('inf')
+        patience = 10
+        patience_counter = 0
+        train_losses = []
+        val_losses = []
+        
+        print(f"Training with {len(train_sequences)} samples, {len(val_sequences)} validation samples")
         
         for epoch in range(epochs):
             self.model.train()
@@ -90,8 +108,11 @@ class GRUModel:
                 outputs = self.model(batch_x)
                 loss = self.criterion(outputs.squeeze(), batch_y)
                 loss.backward()
-                self.optimizer.step()
                 
+                # Gradient clipping for stability
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                
+                self.optimizer.step()
                 train_loss += loss.item()
             
             self.model.eval()
@@ -102,9 +123,35 @@ class GRUModel:
                     outputs = self.model(batch_x)
                     val_loss += self.criterion(outputs.squeeze(), batch_y).item()
             
+            train_loss /= len(train_loader)
+            val_loss /= len(val_loader)
+            
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+            
+            # Model checkpointing and early stopping
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(self.model.state_dict(), 'best_gru_model.pth')
+                patience_counter = 0
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'train_loss': train_loss,
+                    'val_loss': val_loss
+                }, 'best_gru_model.pth')
+            else:
+                patience_counter += 1
+            
+            if epoch % 10 == 0:
+                print(f"Epoch {epoch}: Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+            
+            # Early stopping
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch}")
+                break
+        
+        return {'train_losses': train_losses, 'val_losses': val_losses}
     
     def predict(self, sequences):
         self.model.eval()
@@ -114,5 +161,7 @@ class GRUModel:
         return predictions.cpu().numpy()
     
     def load_best_model(self):
-        self.model.load_state_dict(torch.load('best_gru_model.pth', weights_only=True))
+        checkpoint = torch.load('best_gru_model.pth', weights_only=False)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded model from epoch {checkpoint['epoch']} with val loss {checkpoint['val_loss']:.6f}")
         return self
