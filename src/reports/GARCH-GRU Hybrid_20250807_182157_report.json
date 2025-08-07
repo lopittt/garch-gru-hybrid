@@ -1,0 +1,298 @@
+{
+  "report_id": "GARCH-GRU Hybrid_20250807_182157",
+  "timestamp": "2025-08-07T18:21:57.832217",
+  "model_name": "GARCH-GRU Hybrid",
+  "configuration": {
+    "_help": "GARCH-GRU Configuration - See _options for supported values",
+    "training": {
+      "location": "local",
+      "modal_gpu": "T4",
+      "epochs": 150,
+      "batch_size": 500,
+      "max_train_size": 500,
+      "sequence_length": 6,
+      "timeout_minutes": 30,
+      "print_training_time": true,
+      "verbose_training": true
+    },
+    "data": {
+      "years_back": 10,
+      "end_date": "2024-12-31",
+      "gkyz_window": 10,
+      "garch_p": 1,
+      "garch_q": 1
+    },
+    "simulation": {
+      "n_periods": 252,
+      "n_paths": 100,
+      "save_plots": true,
+      "plot_dpi": 300
+    },
+    "modal": {
+      "app_name": "garch-gru-training",
+      "volume_name": "garch-gru-volume",
+      "image_packages": [
+        "torch",
+        "numpy",
+        "scikit-learn"
+      ]
+    },
+    "_options": {
+      "training": {
+        "location": [
+          "local",
+          "modal"
+        ],
+        "modal_gpu": [
+          "T4 (cost-effective, 16GB)",
+          "A10G (mid-range, 24GB)",
+          "A100 (high-perf, 40/80GB)",
+          "H100 (fastest)",
+          "L4 (budget, 24GB)"
+        ],
+        "epochs": "1-500 (typical: 20-100)",
+        "batch_size": [
+          8,
+          16,
+          32,
+          64,
+          128,
+          256
+        ],
+        "max_train_size": "100-2000 (paper uses 500)",
+        "sequence_length": "3-20 days (typical: 6)",
+        "timeout_minutes": "5-60",
+        "print_training_time": [
+          true,
+          false
+        ],
+        "verbose_training": [
+          true,
+          false
+        ]
+      },
+      "data": {
+        "years_back": "1-20 years",
+        "end_date": "YYYY-MM-DD format",
+        "gkyz_window": "5-30 days",
+        "garch_p": "1-3 (autoregressive order)",
+        "garch_q": "1-3 (moving average order)"
+      },
+      "simulation": {
+        "n_periods": "30-1000 days (252 = 1 trading year)",
+        "n_paths": "10-1000 (more = smoother but slower)",
+        "save_plots": [
+          true,
+          false
+        ],
+        "plot_dpi": [
+          72,
+          150,
+          300,
+          600
+        ]
+      },
+      "modal": {
+        "app_name": "alphanumeric + hyphens only",
+        "volume_name": "alphanumeric + hyphens only",
+        "image_packages": "list of pip package names"
+      }
+    }
+  },
+  "training_diagnostics": null,
+  "statistical_validation": {
+    "residual_normality": {
+      "jarque_bera": 1.9934943885024826e-28,
+      "dagostino": 1.2482179318962299e-14,
+      "kolmogorov_smirnov": 0.0009452741395200089,
+      "anderson_darling": 0.01
+    },
+    "residual_autocorr": {
+      "ljung_box_lag_5": 1.365578068683019e-184,
+      "ljung_box_lag_10": 1.4481254024800228e-225,
+      "ljung_box_lag_20": 3.428048343576272e-219
+    },
+    "residual_heteroscedasticity": {
+      "arch_lm_lag_5": 5.638366528140486e-47,
+      "arch_lm_lag_10": 2.6933069943807425e-42,
+      "breusch_pagan_proxy": 0.05849052711720583
+    },
+    "residual_stationarity": {
+      "adf": 0.07667762532051667
+    },
+    "forecast_accuracy_tests": {},
+    "model_significance": {
+      "r2_significance": 0.999,
+      "vs_persistence": 4.4478127398300004e-14
+    },
+    "volatility_clustering": {
+      "abs_residual_clustering": 9.736020608139375e-230,
+      "squared_residual_clustering": 1.7173871807895013e-203
+    },
+    "arch_effects": {
+      "arch_lag_1": 3.087882419699655e-51,
+      "arch_lag_5": 5.638366528140486e-47,
+      "arch_lag_10": 2.6933069943807425e-42
+    },
+    "parameter_stability": {},
+    "structural_breaks": {},
+    "test_summary": {
+      "residual_normality": "fail",
+      "autocorrelation": "fail",
+      "heteroscedasticity": "fail",
+      "model_significance": "fail"
+    },
+    "critical_failures": [
+      "Residual normality severely violated",
+      "Significant autocorrelation in residuals",
+      "Significant heteroscedasticity detected",
+      "Model predictions not significantly better than random"
+    ],
+    "warnings": [],
+    "overall_validity": 0.0
+  },
+  "model_analysis": null,
+  "simulation_validation": {
+    "return_distribution_tests": {
+      "kolmogorov_smirnov": 5.85078430451362e-17,
+      "anderson_darling": 1e-05,
+      "mann_whitney": 0.04131119315512753
+    },
+    "moment_matching": {
+      "mean": {
+        "historical": 0.00048732821412560145,
+        "simulated": 0.0005240542139084384,
+        "difference": 3.672599978283696e-05,
+        "relative_error": 0.07536194030697224
+      },
+      "std": {
+        "historical": 0.011134442163316709,
+        "simulated": 0.005866750490555261,
+        "difference": 0.005267691672761448,
+        "relative_error": 0.47309884011219444
+      },
+      "skewness": {
+        "historical": -0.8006169531559566,
+        "simulated": -0.003770836902061385,
+        "difference": 0.7968461162538952,
+        "relative_error": 0.9952900861177157
+      },
+      "kurtosis": {
+        "historical": 13.636524785436276,
+        "simulated": 0.14826176887204623,
+        "difference": 13.488263016564229,
+        "relative_error": 0.9891275987683908
+      }
+    },
+    "distributional_similarity": {
+      "qq_correlation": 3.8988872289288135e-40
+    },
+    "fat_tails_test": {
+      "kurtosis_difference": 13.517238580674832,
+      "historical_kurtosis": 13.636524785436276,
+      "simulated_kurtosis": 0.11928620476144383,
+      "both_fat_tails": 1.0
+    },
+    "volatility_clustering_test": {
+      "historical_clustering_pval": 0.0,
+      "simulated_clustering_pval": 0.35442549719675914,
+      "both_show_clustering": 0.0
+    },
+    "leverage_effect_test": {
+      "average_leverage_correlation": -0.003618808889619353,
+      "leverage_effect_present": 0.0
+    },
+    "autocorr_tests": {
+      "historical_autocorr_pval": 9.253373347996607e-42,
+      "simulated_autocorr_pval": 0.4260025699973619,
+      "both_no_autocorr": 0.0
+    },
+    "jump_detection": {
+      "jump_count": 0,
+      "jump_frequency": 0.0,
+      "max_jump_size": 0.02851809447355702,
+      "jump_threshold": 0.029333752452776304,
+      "max_jump_in_std_units": 4.860969376397992
+    },
+    "trend_analysis": {
+      "average_trend_strength": 0.6537277034519531,
+      "max_trend_strength": 0.972675778815886,
+      "paths_with_strong_trend": "72",
+      "trend_frequency": 0.72
+    },
+    "path_statistics": {
+      "mean_total_return": 0.14557663231728166,
+      "std_total_return": 0.10035975190184951,
+      "min_final_price": 533.6270264265399,
+      "max_final_price": 801.5046484071181,
+      "price_range_ratio": 1.5019941058353699,
+      "paths_ending_positive": 0.93
+    },
+    "extreme_event_frequency": {
+      "historical_extreme_freq": 0.024652087475149104,
+      "simulated_extreme_freq": 3.968253968253968e-05,
+      "extreme_freq_ratio": 0.0016097030209933437,
+      "threshold_used": 0.027836105408291772
+    },
+    "convergence_analysis": {
+      "running_mean_variation": 0.002654296192252305,
+      "standard_error_of_mean": 5.868307399765268,
+      "relative_standard_error": 0.008760631901057633,
+      "convergence_quality": 0.9973527304452469
+    },
+    "sample_size_adequacy": {
+      "adequate_paths": true,
+      "adequate_periods": true,
+      "overall_adequate": true
+    },
+    "simulation_stability": {
+      "has_numerical_issues": 0.0,
+      "min_price": 519.7417553806304,
+      "max_price": 816.5750494160153,
+      "extreme_prices": 0.0
+    },
+    "path_diversity": 0.08760631901057633,
+    "correlation_structure": {
+      "average_path_correlation": 0.0497817694021337,
+      "max_path_correlation": 0.23310806324878233,
+      "paths_too_correlated": 0.0
+    },
+    "realism_score": 0.44999999999999996,
+    "simulation_quality_score": 0.7997352730445246,
+    "passed_validation": false,
+    "red_flags": [
+      "Multiple distributional tests failed - simulated returns don't match historical"
+    ],
+    "warnings": [
+      "Simulated returns may not exhibit volatility clustering"
+    ],
+    "recommendations": []
+  },
+  "overall_health_score": 0.3998676365222623,
+  "critical_issues": [
+    "Significant heteroscedasticity detected",
+    "Significant autocorrelation in residuals",
+    "Model predictions not significantly better than random",
+    "Multiple distributional tests failed - simulated returns don't match historical",
+    "Residual normality severely violated"
+  ],
+  "warnings": [
+    "Simulated returns may not exhibit volatility clustering"
+  ],
+  "recommendations": [],
+  "passed_validation": false,
+  "performance_metrics": {
+    "r2": -1.0489444290679755,
+    "mse": 1.482163039903925e-05,
+    "mae": 0.002871158598758589
+  },
+  "benchmark_comparisons": {
+    "r2": "poor",
+    "mse": "excellent",
+    "mae": "excellent"
+  },
+  "execution_time": 63.528570890426636,
+  "resource_usage": {
+    "memory_usage": 0
+  }
+}

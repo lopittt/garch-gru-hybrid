@@ -33,35 +33,69 @@ class PathSimulator:
     
     def simulate_hybrid_paths(self, hybrid_model, historical_returns, historical_volatility, 
                             n_periods=252, n_paths=100):
+        """Simulate price paths using GARCH-GRU hybrid model
+        
+        Critical fix: Feed GARCH conditional volatility to GRU, not hybrid output
+        """
         paths = np.zeros((n_periods + 1, n_paths))
         paths[0, :] = self.initial_price
         
         for path_idx in range(n_paths):
+            # Initialize with historical data
             recent_returns = historical_returns.copy()
-            recent_volatility = historical_volatility.copy()
+            
+            # Get initial GARCH conditional volatilities (what GRU was trained on)
+            garch_model = hybrid_model.garch
+            garch_cond_vol = garch_model.conditional_volatility()
+            
+            # Align with recent returns length
+            if len(garch_cond_vol) >= len(recent_returns):
+                recent_garch_vol = garch_cond_vol.tail(len(recent_returns))
+            else:
+                # Pad if necessary
+                recent_garch_vol = pd.Series(
+                    np.concatenate([
+                        np.full(len(recent_returns) - len(garch_cond_vol), garch_cond_vol.iloc[0]),
+                        garch_cond_vol.values
+                    ])
+                )
             
             for t in range(1, n_periods + 1):
-                # Get volatility forecast
-                forecast = hybrid_model.forecast(recent_returns, recent_volatility)
-                # Properly extract scalar value from potentially nested array
-                vol = forecast['combined']
-                if hasattr(vol, '__len__'):
-                    while hasattr(vol, '__len__') and len(vol) > 0:
-                        vol = vol[0]
-                    # Convert to Python float if it's still a numpy type
-                    if hasattr(vol, 'item'):
-                        vol = vol.item()
+                # CRITICAL: Use GARCH conditional volatility for GRU input
+                forecast = hybrid_model.forecast(recent_returns, recent_garch_vol)
                 
-                # Generate return
+                # Extract hybrid volatility for return generation
+                hybrid_vol = forecast['combined']
+                if hasattr(hybrid_vol, '__len__'):
+                    while hasattr(hybrid_vol, '__len__') and len(hybrid_vol) > 0:
+                        hybrid_vol = hybrid_vol[0]
+                    if hasattr(hybrid_vol, 'item'):
+                        hybrid_vol = hybrid_vol.item()
+                
+                # Generate return using HYBRID volatility
                 z = np.random.normal(0, 1)
-                ret = self.return_mean + vol * z
+                ret = self.return_mean + hybrid_vol * z
+                ret = np.clip(ret, -0.2, 0.2)  # Cap extreme returns
                 
                 # Update price
                 paths[t, path_idx] = paths[t-1, path_idx] * np.exp(ret)
+                paths[t, path_idx] = np.clip(
+                    paths[t, path_idx], 
+                    0.01 * self.initial_price, 
+                    100 * self.initial_price
+                )
                 
-                # Update rolling windows (simplified)
+                # Update recent returns
                 recent_returns = pd.concat([recent_returns[1:], pd.Series([ret])])
-                recent_volatility = pd.concat([recent_volatility[1:], pd.Series([vol])])
+                
+                # CRITICAL FIX: Update with new GARCH conditional volatility
+                # This maintains consistency with training data structure
+                
+                # Simple one-step update (faster)
+                garch_next_cond_vol = garch_model.forecast(horizon=1)[0]
+                
+                # Update GARCH conditional volatility (NOT hybrid output)
+                recent_garch_vol = pd.concat([recent_garch_vol[1:], pd.Series([garch_next_cond_vol])])
         
         return paths
     

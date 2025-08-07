@@ -29,16 +29,36 @@ def calculate_gkyz_volatility(data, window=10):
     
     return gkyz_rolling.dropna()
 
-def prepare_rolling_windows(data, returns, volatility, garch_window=504, prediction_window=126):
+def prepare_rolling_windows(data, returns, volatility, garch_window=None, prediction_window=None):
     """Prepare rolling windows as described in Section 3.2, Page 6
     
-    Uses 504 days (2 years) for GARCH estimation and 126 days (6 months) for prediction
-    Creates rolling windows that move forward one day at a time
+    Adaptively adjusts window sizes based on available data
     """
+    data_len = len(returns)
+    
+    # Adaptive window sizing based on available data
+    if garch_window is None or prediction_window is None:
+        if data_len >= 1260:  # 5+ years of data
+            garch_window = 504  # 2 years
+            prediction_window = 126  # 6 months
+        elif data_len >= 756:  # 3+ years
+            garch_window = 252  # 1 year
+            prediction_window = 63  # 3 months
+        elif data_len >= 378:  # 1.5+ years
+            garch_window = 126  # 6 months
+            prediction_window = 63  # 3 months
+        else:
+            # Not enough data for rolling windows
+            return []
+    
     windows = []
     
     # Start from garch_window + prediction_window to ensure we have enough data
     start_idx = garch_window + prediction_window
+    
+    # Only create windows if we have enough data
+    if start_idx >= len(returns):
+        return []
     
     for i in range(start_idx, len(returns)):
         window = {

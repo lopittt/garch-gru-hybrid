@@ -4,9 +4,9 @@
   "training": {
     "location": "local",
     "modal_gpu": "T4",
-    "epochs": 50,
+    "epochs": 100,
     "batch_size": 32,
-    "max_train_size": 500,
+    "max_train_size": 2000,
     "sequence_length": 6,
     "timeout_minutes": 30,
     "print_training_time": true,

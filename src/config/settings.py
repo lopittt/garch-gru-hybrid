@@ -47,8 +47,8 @@ class Settings:
             "training": {
                 "location": "local",
                 "modal_gpu": "T4",
-                "epochs": 50,
-                "batch_size": 32,
+                "epochs": 150,
+                "batch_size": 500,
                 "max_train_size": 500,
                 "sequence_length": 6,
                 "timeout_minutes": 30,

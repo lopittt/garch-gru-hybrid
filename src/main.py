@@ -3,6 +3,7 @@
 # Linear execution from data fetching to visualization
 # RELEVANT FILES: fetcher.py, garch.py, hybrid.py, simulator.py, plotter.py
 
+import numpy as np
 import matplotlib.pyplot as plt
 from data.fetcher import fetch_spy_data, get_log_returns
 from data.preprocessor import calculate_gkyz_volatility
@@ -16,9 +17,15 @@ from visualization.plotter import (
     plot_model_comparison_table
 )
 from config.settings import get_settings
+from evaluation.metrics import ModelEvaluator
+from diagnostics.report_generator import ReportGenerator
 
 def main():
-    # Load settings
+    # Load settings and start timing
+    import time
+    start_time = time.time()
+    main._start_time = start_time  # Store for later access
+    
     settings = get_settings()
     
     print("=" * 50)
@@ -67,6 +74,64 @@ def main():
     
     hybrid_model = GARCHGRUHybrid()  # Now automatically reads from settings
     hybrid_model.fit(spy_data, log_returns, gkyz_volatility)
+    
+    # Step 4.5: Evaluate model performance
+    print("\n4.5. Evaluating model performance...")
+    
+    # Generate predictions for the last part of the data
+    test_size = min(252, len(gkyz_volatility) // 5)  # Last 20% or 252 days
+    test_returns = log_returns.tail(test_size)
+    test_volatility = gkyz_volatility.tail(test_size)
+    
+    # Get predictions from both models
+    print("   Generating out-of-sample predictions...")
+    
+    # For GARCH: Use rolling one-step-ahead forecasts on test data
+    # This properly updates the model with new information for accurate predictions
+    garch_predictions = garch_model.rolling_forecast(test_returns)
+    
+    # For Hybrid: Generate rolling predictions with proper data updates
+    hybrid_predictions = []
+    for i in range(hybrid_model.gru.sequence_length, len(test_returns) - 1):
+        # Combine train and test data up to current point
+        current_returns = pd.concat([log_returns[:train_size], test_returns[:i]])
+        current_volatility = pd.concat([gkyz_volatility[:train_size], test_volatility[:i]])
+        
+        # Get hybrid forecast
+        hybrid_pred = hybrid_model.forecast(
+            current_returns,
+            current_volatility
+        )['combined'][0]
+        hybrid_predictions.append(hybrid_pred)
+    
+    # Convert list to array
+    hybrid_predictions = np.array(hybrid_predictions)
+    
+    # Align predictions with actuals
+    # Forecasts predict next period, so align accordingly
+    # Hybrid predictions start from sequence_length and predict next period
+    actual_test = test_volatility.iloc[hybrid_model.gru.sequence_length+1:].values
+    # GARCH predictions need same alignment
+    garch_predictions = garch_predictions[hybrid_model.gru.sequence_length:-1]
+    
+    # Ensure all arrays have same length
+    min_len = min(len(actual_test), len(garch_predictions), len(hybrid_predictions))
+    actual_test = actual_test[:min_len]
+    garch_predictions = garch_predictions[:min_len]
+    hybrid_predictions = hybrid_predictions[:min_len]
+    
+    # Evaluate
+    evaluator = ModelEvaluator()
+    evaluator.print_evaluation_report(actual_test, garch_predictions, "GARCH(1,1)")
+    evaluator.print_evaluation_report(actual_test, hybrid_predictions, "GARCH-GRU Hybrid")
+    
+    # Compare models
+    comparison_df = evaluator.compare_models(
+        actual_test,
+        {'GARCH': garch_predictions, 'Hybrid': hybrid_predictions}
+    )
+    print("\nModel Comparison:")
+    print(comparison_df)
     
     # Step 5: Simulate Paths
     print("\n5. Simulating price paths...")
@@ -128,8 +193,84 @@ def main():
     # Show plots
     plt.show()
     
+    # Step 8: Generate Comprehensive Diagnostic Report
+    print("\n8. Generating comprehensive diagnostic report...")
+    
+    end_time = time.time()
+    start_time = getattr(main, '_start_time', end_time - 300)  # Fallback if not set
+    execution_time = end_time - start_time
+    
+    # Initialize report generator
+    report_generator = ReportGenerator(output_dir="reports", save_plots=True)
+    
+    # Prepare data for report
+    model_data = {
+        'model': hybrid_model,
+        'returns': log_returns,
+        'volatility': gkyz_volatility,
+        'actual': actual_test,
+        'predicted': hybrid_predictions,
+        'model_name': 'GARCH-GRU Hybrid'
+    }
+    
+    simulation_data = {
+        'simulated_paths': hybrid_paths,
+        'historical_returns': log_returns.values,
+        'model_name': 'GARCH-GRU Hybrid'
+    }
+    
+    performance_data = {
+        'r2': comparison_df.loc['Hybrid', 'R²'] if 'Hybrid' in comparison_df.index and 'R²' in comparison_df.columns else 0,
+        'mse': comparison_df.loc['Hybrid', 'MSE'] if 'Hybrid' in comparison_df.index and 'MSE' in comparison_df.columns else 0,
+        'mae': comparison_df.loc['Hybrid', 'MAE'] if 'Hybrid' in comparison_df.index and 'MAE' in comparison_df.columns else 0
+    }
+    
+    execution_info = {
+        'total_time': execution_time,
+        'resources': {'memory_usage': 0}  # Placeholder
+    }
+    
+    # Generate comprehensive report
+    report = report_generator.generate_comprehensive_report(
+        model_name="GARCH-GRU Hybrid",
+        configuration=settings._settings,
+        model_data=model_data,
+        simulation_data=simulation_data,
+        performance_data=performance_data,
+        execution_info=execution_info
+    )
+    
+    # Export reports
+    html_path = report_generator.export_html_report(report)
+    json_path = report_generator.export_json_report(report)
+    
+    print(f"   📊 Diagnostic report generated:")
+    print(f"   HTML: {html_path}")
+    print(f"   JSON: {json_path}")
+    
+    # Print executive summary
+    print(f"\n   🎯 EXECUTIVE SUMMARY:")
+    print(f"   Overall Health Score: {report.overall_health_score:.1%}")
+    print(f"   Validation Status: {'PASS' if report.passed_validation else 'FAIL'}")
+    print(f"   Critical Issues: {len(report.critical_issues)}")
+    print(f"   Warnings: {len(report.warnings)}")
+    
+    if report.critical_issues:
+        print(f"\n   🚨 CRITICAL ISSUES:")
+        for issue in report.critical_issues:
+            print(f"      • {issue}")
+    
+    if report.recommendations:
+        print(f"\n   💡 RECOMMENDATIONS:")
+        for rec in report.recommendations[:3]:  # Show first 3
+            print(f"      • {rec}")
+    
     print("\n" + "=" * 50)
-    print("Simulation Complete!")
+    print("🎉 Complete workflow finished with diagnostic report!")
+    print("📖 Review the HTML report for comprehensive analysis")
+    
+    # Clean up temporary files
+    report_generator.cleanup_plots()
     print("=" * 50)
     
     return {

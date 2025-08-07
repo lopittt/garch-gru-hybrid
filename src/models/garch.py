@@ -105,6 +105,34 @@ class GARCH:
     def conditional_volatility(self):
         return pd.Series(self.volatility, index=range(len(self.volatility)))
     
+    def rolling_forecast(self, new_returns):
+        """Generate rolling one-step-ahead forecasts for new data"""
+        omega, alpha, beta = self.params['omega'], self.params['alpha'], self.params['beta']
+        
+        # Convert new returns to numpy array
+        if isinstance(new_returns, pd.Series):
+            new_returns = new_returns.values
+        
+        # No scaling needed - returns are already in correct scale
+        # (The model params were already rescaled in fit())
+        
+        # Initialize with last known values from training
+        forecasts = []
+        last_return = self.returns[-1]  # Last return from training
+        last_var = self.volatility[-1]**2  # Last variance from training
+        
+        # First forecast uses last training data
+        forecast_var = omega + alpha * last_return**2 + beta * last_var
+        forecasts.append(np.sqrt(forecast_var))
+        
+        # Subsequent forecasts use new returns
+        for t in range(len(new_returns) - 1):
+            # Use return at t to forecast volatility at t+1
+            forecast_var = omega + alpha * new_returns[t]**2 + beta * forecast_var
+            forecasts.append(np.sqrt(forecast_var))
+        
+        return np.array(forecasts)
+    
     def simulate(self, n_periods, n_paths=1):
         omega, alpha, beta = self.params['omega'], self.params['alpha'], self.params['beta']
         
