@@ -43,7 +43,14 @@ class PathSimulator:
             for t in range(1, n_periods + 1):
                 # Get volatility forecast
                 forecast = hybrid_model.forecast(recent_returns, recent_volatility)
-                vol = forecast['combined'][0] if hasattr(forecast['combined'], '__len__') else forecast['combined']
+                # Properly extract scalar value from potentially nested array
+                vol = forecast['combined']
+                if hasattr(vol, '__len__'):
+                    while hasattr(vol, '__len__') and len(vol) > 0:
+                        vol = vol[0]
+                    # Convert to Python float if it's still a numpy type
+                    if hasattr(vol, 'item'):
+                        vol = vol.item()
                 
                 # Generate return
                 z = np.random.normal(0, 1)

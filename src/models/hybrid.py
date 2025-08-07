@@ -157,25 +157,23 @@ class GARCHGRUHybrid:
         else:
             garch_forecast = raw_garch_forecast
         
-        # Get recent data for GRU (use GARCH forecasts as input, not historical volatility)
+        # Get recent data for GRU (use existing GARCH model's conditional volatility)
         recent_returns = np.abs(returns[-self.gru.sequence_length:].values)
         
-        # Generate recent GARCH forecasts for GRU input
-        recent_garch_forecasts = []
-        for i in range(self.gru.sequence_length):
-            start_idx = len(returns) - self.gru.sequence_length + i
-            if start_idx > 0:
-                temp_returns = returns[:start_idx]
-                temp_garch = GARCH(p=1, q=1)
-                temp_garch.fit(temp_returns)
-                forecast = temp_garch.forecast(horizon=1)[0]
-                if self.lambda_scale is not None:
-                    forecast = np.sqrt(self.lambda_scale * (forecast ** 2))
-                recent_garch_forecasts.append(forecast)
-            else:
-                recent_garch_forecasts.append(garch_forecast[0])
+        # Use the already-fitted GARCH model's conditional volatility
+        # This is much more efficient and consistent with the paper
+        garch_cond_vol = self.garch.conditional_volatility()
         
-        recent_garch_forecasts = np.array(recent_garch_forecasts)
+        # Get the recent GARCH conditional volatility values
+        if len(garch_cond_vol) >= self.gru.sequence_length:
+            recent_garch_forecasts = garch_cond_vol[-self.gru.sequence_length:].values
+        else:
+            # Fallback if not enough history
+            recent_garch_forecasts = np.full(self.gru.sequence_length, garch_forecast[0])
+        
+        # Apply scaling if needed
+        if self.lambda_scale is not None:
+            recent_garch_forecasts = np.sqrt(self.lambda_scale * (recent_garch_forecasts ** 2))
         
         # Prepare GRU input (2D: returns + GARCH forecasts)
         gru_input = np.column_stack([
