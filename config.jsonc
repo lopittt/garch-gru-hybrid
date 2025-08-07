@@ -1,0 +1,89 @@
+{
+  // GARCH-GRU Simulation Configuration
+  // This file supports JSONC format (JSON with comments)
+  // Copy settings to config.json after editing
+  
+  "training": {
+    // Training location: "local" (CPU) or "modal" (cloud GPU)
+    "location": "local",
+    
+    // Modal GPU types: "T4", "A10G", "A100", "H100", "L4"
+    // T4: Cost-effective, 16GB memory
+    // A10G: Mid-range, 24GB memory  
+    // A100: High-performance, 40GB/80GB memory
+    // H100: Latest generation, fastest
+    // L4: Budget option, 24GB memory
+    "modal_gpu": "T4",
+    
+    // Training epochs (1-500, typical: 20-100)
+    "epochs": 50,
+    
+    // Batch size (8, 16, 32, 64, 128, 256)
+    // Larger = faster training but more memory
+    "batch_size": 32,
+    
+    // Maximum training samples (100-2000, paper uses 500)
+    "max_train_size": 500,
+    
+    // GRU sequence length in days (3-20, typical: 6)
+    "sequence_length": 6,
+    
+    // Modal timeout in minutes (5-60)
+    "timeout_minutes": 30,
+    
+    // Print training time after completion (true/false)
+    "print_training_time": true,
+    
+    // Show detailed training progress (true/false)
+    "verbose_training": true
+  },
+  
+  "data": {
+    // Years of historical data to fetch (1-20)
+    "years_back": 10,
+    
+    // End date for data (YYYY-MM-DD format)
+    "end_date": "2024-12-31",
+    
+    // GKYZ volatility calculation window (5-30 days)
+    "gkyz_window": 10,
+    
+    // GARCH model order p (autoregressive, typically 1)
+    "garch_p": 1,
+    
+    // GARCH model order q (moving average, typically 1)
+    "garch_q": 1
+  },
+  
+  "simulation": {
+    // Simulation periods/days (30-1000, 252 = 1 trading year)
+    "n_periods": 252,
+    
+    // Number of Monte Carlo paths (10-1000)
+    // More paths = smoother results but slower
+    "n_paths": 100,
+    
+    // Save plots automatically (true/false)
+    "save_plots": true,
+    
+    // Plot resolution DPI (72, 150, 300, 600)
+    // Higher = better quality but larger files
+    "plot_dpi": 300
+  },
+  
+  "modal": {
+    // Modal app name (no spaces, alphanumeric + hyphens)
+    "app_name": "garch-gru-training",
+    
+    // Modal volume name for persistent storage
+    "volume_name": "garch-gru-volume",
+    
+    // Python packages to install in Modal container
+    // Add packages here if you need additional dependencies
+    "image_packages": [
+      "torch",
+      "numpy", 
+      "scikit-learn"
+    ]
+  }
+}
