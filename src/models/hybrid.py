@@ -5,20 +5,53 @@
 
 import numpy as np
 import pandas as pd
+import time
 from .garch import GARCH
 from .gru import GRUModel
+from .modal_gru import ModalGRUModel
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.preprocessor import scale_volatility, prepare_rolling_windows
+from config.settings import get_settings
 
 class GARCHGRUHybrid:
-    def __init__(self, sequence_length=6):
-        self.garch = GARCH(p=1, q=1)
-        self.gru = GRUModel(sequence_length=sequence_length)
+    def __init__(self, sequence_length=None, use_modal=None):
+        # Load settings
+        self.settings = get_settings()
+        
+        # Use settings with manual override capability
+        if sequence_length is None:
+            sequence_length = self.settings.get('training.sequence_length', 6)
+        
+        if use_modal is None:
+            self.use_modal = self.settings.use_modal
+        else:
+            self.use_modal = use_modal
+        
+        # Initialize GARCH with settings
+        garch_p = self.settings.get('data.garch_p', 1)
+        garch_q = self.settings.get('data.garch_q', 1)
+        self.garch = GARCH(p=garch_p, q=garch_q)
+        
+        # Initialize GRU based on settings
+        if self.use_modal:
+            self.gru = ModalGRUModel(sequence_length=sequence_length)
+            print(f"🌥️  Using Modal cloud training (GPU: {self.settings.modal_gpu})")
+        else:
+            self.gru = GRUModel(sequence_length=sequence_length)
+            print("💻 Using local CPU training")
+        
         self.is_fitted = False
         self.lambda_scale = None
         self.rolling_results = []
+        self.training_time = None
+        
+        # Print configuration if verbose
+        if self.settings.get('training.verbose_training', True):
+            print(f"   Training location: {'Modal' if self.use_modal else 'Local'}")
+            print(f"   Sequence length: {sequence_length}")
+            print(f"   GARCH model: ({garch_p}, {garch_q})")
         
     def fit(self, data, returns, volatility):
         """Fit hybrid model using rolling window methodology from the paper"""
@@ -80,14 +113,37 @@ class GARCHGRUHybrid:
         
         print(f"Training GRU with {len(train_seq)} training samples, {len(val_seq)} validation samples")
         
-        # Train GRU with paper specifications
-        training_history = self.gru.train(
-            train_seq, train_tgt, val_seq, val_tgt, 
-            epochs=50, batch_size=32, max_train_size=500
-        )
+        # Measure training time
+        start_time = time.time()
         
-        self.gru.load_best_model()
+        # Get training parameters from settings
+        epochs = self.settings.get('training.epochs', 50)
+        batch_size = self.settings.get('training.batch_size', 32)
+        max_train_size = self.settings.get('training.max_train_size', 500)
+        
+        if self.use_modal:
+            print("Training with Modal cloud compute...")
+            training_history = self.gru.train_on_modal(
+                train_seq, train_tgt, val_seq, val_tgt, 
+                epochs=epochs, batch_size=batch_size, max_train_size=max_train_size
+            )
+            self.training_time = self.gru.get_training_time()
+        else:
+            print("Training locally...")
+            training_history = self.gru.train(
+                train_seq, train_tgt, val_seq, val_tgt, 
+                epochs=epochs, batch_size=batch_size, max_train_size=max_train_size
+            )
+            end_time = time.time()
+            self.training_time = end_time - start_time
+            self.gru.load_best_model()
+        
         self.is_fitted = True
+        
+        # Always print training time if configured in settings
+        if self.settings.print_training_time:
+            location = "Modal cloud" if self.use_modal else "local CPU"
+            print(f"✅ Training completed on {location} in {self.training_time:.2f} seconds")
         
         return self
     
@@ -137,11 +193,29 @@ class GARCHGRUHybrid:
         val_seq = sequences[split_idx:]
         val_tgt = targets[split_idx:]
         
-        # Train GRU
-        self.gru.train(train_seq, train_tgt, val_seq, val_tgt, epochs=20)
-        self.gru.load_best_model()
+        # Train GRU with timing
+        start_time = time.time()
+        
+        # Use reduced epochs for simple training
+        epochs = min(self.settings.get('training.epochs', 50), 20)
+        batch_size = self.settings.get('training.batch_size', 32)
+        
+        if self.use_modal:
+            self.gru.train_on_modal(train_seq, train_tgt, val_seq, val_tgt, epochs=epochs, batch_size=batch_size)
+            self.training_time = self.gru.get_training_time()
+        else:
+            self.gru.train(train_seq, train_tgt, val_seq, val_tgt, epochs=epochs, batch_size=batch_size)
+            end_time = time.time()
+            self.training_time = end_time - start_time
+            self.gru.load_best_model()
         
         self.is_fitted = True
+        
+        # Print training time if configured in settings
+        if self.settings.print_training_time:
+            location = "Modal cloud" if self.use_modal else "local CPU"
+            print(f"✅ Simplified training completed on {location} in {self.training_time:.2f} seconds")
+            
         return self
     
     def forecast(self, returns, volatility, horizon=1):
@@ -199,3 +273,7 @@ class GARCHGRUHybrid:
             'garch': self.garch.conditional_volatility(),
             'combined': None  # Would need full historical predictions
         }
+    
+    def get_training_time(self):
+        """Get the training time for comparison"""
+        return self.training_time

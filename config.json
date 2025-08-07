@@ -1,0 +1,68 @@
+{
+  "_help": "GARCH-GRU Configuration - See _options for supported values",
+  
+  "training": {
+    "location": "local",
+    "modal_gpu": "T4",
+    "epochs": 50,
+    "batch_size": 32,
+    "max_train_size": 500,
+    "sequence_length": 6,
+    "timeout_minutes": 30,
+    "print_training_time": true,
+    "verbose_training": true
+  },
+  
+  "data": {
+    "years_back": 10,
+    "end_date": "2024-12-31",
+    "gkyz_window": 10,
+    "garch_p": 1,
+    "garch_q": 1
+  },
+  
+  "simulation": {
+    "n_periods": 252,
+    "n_paths": 100,
+    "save_plots": true,
+    "plot_dpi": 300
+  },
+  
+  "modal": {
+    "app_name": "garch-gru-training",
+    "volume_name": "garch-gru-volume",
+    "image_packages": ["torch", "numpy", "scikit-learn"]
+  },
+  
+  "_options": {
+    "training": {
+      "location": ["local", "modal"],
+      "modal_gpu": ["T4 (cost-effective, 16GB)", "A10G (mid-range, 24GB)", "A100 (high-perf, 40/80GB)", "H100 (fastest)", "L4 (budget, 24GB)"],
+      "epochs": "1-500 (typical: 20-100)",
+      "batch_size": [8, 16, 32, 64, 128, 256],
+      "max_train_size": "100-2000 (paper uses 500)",
+      "sequence_length": "3-20 days (typical: 6)",
+      "timeout_minutes": "5-60",
+      "print_training_time": [true, false],
+      "verbose_training": [true, false]
+    },
+    "data": {
+      "years_back": "1-20 years",
+      "end_date": "YYYY-MM-DD format",
+      "gkyz_window": "5-30 days",
+      "garch_p": "1-3 (autoregressive order)",
+      "garch_q": "1-3 (moving average order)"
+    },
+    "simulation": {
+      "n_periods": "30-1000 days (252 = 1 trading year)",
+      "n_paths": "10-1000 (more = smoother but slower)",
+      "save_plots": [true, false],
+      "plot_dpi": [72, 150, 300, 600]
+    },
+    "modal": {
+      "app_name": "alphanumeric + hyphens only",
+      "volume_name": "alphanumeric + hyphens only", 
+      "image_packages": "list of pip package names"
+    }
+  }
+}
