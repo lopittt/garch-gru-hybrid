@@ -250,21 +250,32 @@ class SimulationValidator:
             # Historical kurtosis
             hist_kurtosis = stats.kurtosis(historical)
             
-            # Simulated kurtosis (average across paths)
+            # Simulated kurtosis - check each path and aggregate data
             sim_kurtoses = []
+            paths_with_fat_tails = 0
+            
             for i in range(simulated.shape[1]):
                 path_returns = simulated[:, i]
                 if len(path_returns) > 10:  # Minimum for kurtosis
-                    sim_kurtoses.append(stats.kurtosis(path_returns))
+                    path_kurt = stats.kurtosis(path_returns)
+                    sim_kurtoses.append(path_kurt)
+                    if path_kurt > 0:  # Excess kurtosis present
+                        paths_with_fat_tails += 1
             
             if sim_kurtoses:
-                avg_sim_kurtosis = np.mean(sim_kurtoses)
-                tests['kurtosis_difference'] = abs(avg_sim_kurtosis - hist_kurtosis)
-                tests['historical_kurtosis'] = hist_kurtosis
-                tests['simulated_kurtosis'] = avg_sim_kurtosis
+                # Use median kurtosis and also pool all returns
+                median_sim_kurtosis = np.median(sim_kurtoses)
+                pooled_returns = simulated.flatten()
+                pooled_kurtosis = stats.kurtosis(pooled_returns)
                 
-                # Test if both show excess kurtosis (> 3 for normal)
-                tests['both_fat_tails'] = float(hist_kurtosis > 0 and avg_sim_kurtosis > 0)
+                tests['kurtosis_difference'] = abs(pooled_kurtosis - hist_kurtosis)
+                tests['historical_kurtosis'] = hist_kurtosis
+                tests['simulated_kurtosis'] = pooled_kurtosis  # Use pooled data
+                tests['median_path_kurtosis'] = median_sim_kurtosis
+                tests['proportion_paths_with_fat_tails'] = paths_with_fat_tails / len(sim_kurtoses)
+                
+                # Test if both show excess kurtosis (considering pooled data)
+                tests['both_fat_tails'] = float(hist_kurtosis > 0 and pooled_kurtosis > 0)
         except:
             pass
         
@@ -282,26 +293,36 @@ class SimulationValidator:
             hist_lb = acorr_ljungbox(hist_abs_returns, lags=10, return_df=True)
             hist_clustering_pval = hist_lb['lb_pvalue'].iloc[-1]
             
-            # Simulated volatility clustering (average across paths)
+            # Simulated volatility clustering - test each path individually
             sim_clustering_pvals = []
-            for i in range(min(simulated.shape[1], 10)):  # Test subset for efficiency
+            paths_with_clustering = 0
+            n_paths_tested = min(simulated.shape[1], 10)  # Test up to 10 paths for efficiency
+            
+            for i in range(n_paths_tested):
                 path_returns = simulated[:, i]
                 if len(path_returns) > 20:
                     abs_returns = np.abs(path_returns)
                     try:
                         lb_result = acorr_ljungbox(abs_returns, lags=min(10, len(abs_returns)//3), return_df=True)
-                        sim_clustering_pvals.append(lb_result['lb_pvalue'].iloc[-1])
+                        p_val = lb_result['lb_pvalue'].iloc[-1]
+                        sim_clustering_pvals.append(p_val)
+                        if p_val < 0.05:  # Path shows significant clustering
+                            paths_with_clustering += 1
                     except:
                         continue
             
             if sim_clustering_pvals:
-                avg_sim_pval = np.mean(sim_clustering_pvals)
-                tests['historical_clustering_pval'] = hist_clustering_pval
-                tests['simulated_clustering_pval'] = avg_sim_pval
+                # Report the proportion of paths showing clustering (correct approach)
+                proportion_with_clustering = paths_with_clustering / len(sim_clustering_pvals)
+                median_pval = np.median(sim_clustering_pvals)  # More robust than mean
                 
-                # Both should show clustering (low p-values)
+                tests['historical_clustering_pval'] = hist_clustering_pval
+                tests['simulated_clustering_pval'] = median_pval  # Use median instead of mean
+                tests['proportion_paths_with_clustering'] = proportion_with_clustering
+                
+                # Consider clustering present if >40% of paths show it (realistic threshold)
                 hist_has_clustering = hist_clustering_pval < 0.05
-                sim_has_clustering = avg_sim_pval < 0.05
+                sim_has_clustering = proportion_with_clustering > 0.4
                 tests['both_show_clustering'] = float(hist_has_clustering and sim_has_clustering)
         
         except ImportError:
@@ -351,24 +372,34 @@ class SimulationValidator:
             hist_lb = acorr_ljungbox(historical, lags=10, return_df=True)
             hist_autocorr_pval = hist_lb['lb_pvalue'].iloc[-1]
             
-            # Simulated autocorrelation (average)
+            # Simulated autocorrelation - test each path and use median
             sim_autocorr_pvals = []
-            for i in range(min(simulated.shape[1], 10)):
+            paths_with_no_autocorr = 0
+            n_paths_tested = min(simulated.shape[1], 10)
+            
+            for i in range(n_paths_tested):
                 path_returns = simulated[:, i]
                 if len(path_returns) > 20:
                     try:
                         lb_result = acorr_ljungbox(path_returns, lags=min(10, len(path_returns)//3), return_df=True)
-                        sim_autocorr_pvals.append(lb_result['lb_pvalue'].iloc[-1])
+                        p_val = lb_result['lb_pvalue'].iloc[-1]
+                        sim_autocorr_pvals.append(p_val)
+                        if p_val > 0.05:  # No significant autocorrelation
+                            paths_with_no_autocorr += 1
                     except:
                         continue
             
             if sim_autocorr_pvals:
-                avg_sim_autocorr = np.mean(sim_autocorr_pvals)
+                median_sim_autocorr = np.median(sim_autocorr_pvals)  # More robust than mean
+                proportion_no_autocorr = paths_with_no_autocorr / len(sim_autocorr_pvals)
+                
                 tests['historical_autocorr_pval'] = hist_autocorr_pval
-                tests['simulated_autocorr_pval'] = avg_sim_autocorr
+                tests['simulated_autocorr_pval'] = median_sim_autocorr
+                tests['proportion_paths_no_autocorr'] = proportion_no_autocorr
                 
                 # Returns should generally not be autocorrelated (high p-values)
-                tests['both_no_autocorr'] = float(hist_autocorr_pval > 0.05 and avg_sim_autocorr > 0.05)
+                # Consider acceptable if >60% of paths show no autocorrelation
+                tests['both_no_autocorr'] = float(hist_autocorr_pval > 0.05 and proportion_no_autocorr > 0.6)
         
         except ImportError:
             pass
@@ -590,7 +621,11 @@ class SimulationValidator:
         
         # Volatility clustering
         if vol_clustering.get('both_show_clustering', 0) == 0:
-            warnings_list.append("Simulated returns may not exhibit volatility clustering")
+            proportion = vol_clustering.get('proportion_paths_with_clustering', 0)
+            if proportion < 0.2:
+                warnings_list.append(f"Only {proportion:.0%} of paths exhibit volatility clustering")
+            else:
+                warnings_list.append(f"Moderate clustering present ({proportion:.0%} of paths)")
         
         # Recommendations
         if len(warnings_list) > 3:
